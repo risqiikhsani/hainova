@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { Message } from 'ai';
-import { Bot, User, Copy, Check, AlertCircle } from 'lucide-react';
+import { Bot, User, Copy, Check, CloudSun, Loader2, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { MarkdownRenderer } from './markdown-renderer';
 
 interface ChatMessagesProps {
   messages: Message[];
@@ -55,10 +56,60 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                   : 'bg-muted/70 border border-border/60 text-foreground rounded-tl-xs'
               )}
             >
+              {/* Tool Invocations Display */}
+              {message.toolInvocations && message.toolInvocations.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {message.toolInvocations.map((toolInvocation) => {
+                    const { toolName, toolCallId, state } = toolInvocation;
+
+                    if (toolName === 'getWeather') {
+                      const args = toolInvocation.args as { city?: string };
+                      return (
+                        <div
+                          key={toolCallId}
+                          className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs"
+                        >
+                          <CloudSun className="h-4 w-4 text-amber-500 animate-pulse" />
+                          {state === 'result' ? (
+                            <span>
+                              Retrieved live weather data for{' '}
+                              <strong className="text-foreground">{args?.city}</strong>
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                              Fetching OpenWeatherMap data for{' '}
+                              <strong className="text-foreground">{args?.city}</strong>...
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Generic tool call fallback
+                    return (
+                      <div
+                        key={toolCallId}
+                        className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground"
+                      >
+                        <Wrench className="h-3.5 w-3.5 text-primary" />
+                        <span>Tool: {toolName}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Message Content */}
-              <div className="whitespace-pre-wrap leading-relaxed break-words">
-                {message.content}
-              </div>
+              {message.content && (
+                isUser ? (
+                  <div className="whitespace-pre-wrap leading-relaxed break-words">
+                    {message.content}
+                  </div>
+                ) : (
+                  <MarkdownRenderer content={message.content} />
+                )
+              )}
 
               {/* Copy action button for assistant messages */}
               {!isUser && message.content && (
@@ -84,7 +135,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
       })}
 
       {/* Loading Indicator */}
-      {isLoading && (
+      {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
         <div className="flex items-start gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
             <Bot className="h-4 w-4 text-primary animate-spin" />

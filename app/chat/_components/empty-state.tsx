@@ -1,6 +1,6 @@
 'use client';
 
-import { Sparkles, Code2, Mail, Compass, HelpCircle } from 'lucide-react';
+import { Sparkles, Code2, Mail, CloudSun, HelpCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 interface EmptyStateProps {
@@ -8,6 +8,12 @@ interface EmptyStateProps {
 }
 
 const SUGGESTED_PROMPTS = [
+  {
+    icon: CloudSun,
+    title: 'Check Live Weather',
+    subtitle: 'Powered by OpenWeatherMap API',
+    prompt: "What's the weather in Tokyo right now?",
+  },
   {
     icon: Code2,
     title: 'Explain React Server Components',
@@ -19,12 +25,6 @@ const SUGGESTED_PROMPTS = [
     title: 'Draft a Professional Email',
     subtitle: 'Communication & tone helper',
     prompt: 'Help me draft a professional email to request project feedback from a client.',
-  },
-  {
-    icon: Compass,
-    title: 'Explore Local Places & Routes',
-    subtitle: 'Travel & recommendations',
-    prompt: 'What are some great strategies for planning a weekend getaway trip with itinerary highlights?',
   },
   {
     icon: HelpCircle,
@@ -45,7 +45,7 @@ export function EmptyState({ onSelectPrompt }: EmptyStateProps) {
         How can I help you today?
       </h2>
       <p className="mb-8 max-w-md text-sm text-muted-foreground">
-        Ask a question, brainstorm ideas, draft content, or get help with your code.
+        Ask a question, check live weather, draft content, or get help with your code.
       </p>
 
       <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
