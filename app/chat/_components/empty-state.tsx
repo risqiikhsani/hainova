@@ -1,6 +1,6 @@
 'use client';
 
-import { Sparkles, Code2, Mail, CloudSun, HelpCircle } from 'lucide-react';
+import { Sparkles, Code2, Mail, CloudSun, MapPin, HelpCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 interface EmptyStateProps {
@@ -8,6 +8,12 @@ interface EmptyStateProps {
 }
 
 const SUGGESTED_PROMPTS = [
+  {
+    icon: MapPin,
+    title: 'Find Hotels & Places',
+    subtitle: 'Search spots near you or Tokyo',
+    prompt: 'Show me top-rated hotels and ramen spots near Tokyo station.',
+  },
   {
     icon: CloudSun,
     title: 'Check Live Weather',

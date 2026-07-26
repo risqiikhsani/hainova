@@ -2,12 +2,15 @@
 
 import { useChat } from 'ai/react';
 import { useRef, useEffect } from 'react';
+import { useGeolocation } from '@/hooks/use-geolocation';
 import { ChatHeader } from './_components/chat-header';
 import { ChatMessages } from './_components/chat-messages';
 import { ChatInput } from './_components/chat-input';
 import { EmptyState } from './_components/empty-state';
 
 export default function ChatPage() {
+  const { coords, status: geoStatus, requestLocation } = useGeolocation();
+
   const {
     messages,
     input,
@@ -19,6 +22,9 @@ export default function ChatPage() {
     append,
   } = useChat({
     api: '/api/chat',
+    body: {
+      userLocation: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
+    },
     onError: (err) => {
       console.error('Chat error:', err);
     },
@@ -47,7 +53,13 @@ export default function ChatPage() {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground antialiased">
       {/* Header */}
-      <ChatHeader onClear={handleClear} hasMessages={messages.length > 0} />
+      <ChatHeader
+        onClear={handleClear}
+        hasMessages={messages.length > 0}
+        geoStatus={geoStatus}
+        coords={coords}
+        onRequestLocation={requestLocation}
+      />
 
       {/* Main Body */}
       <div

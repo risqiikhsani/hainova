@@ -2,10 +2,19 @@
 
 import { useState } from 'react';
 import { Message } from 'ai';
-import { Bot, User, Copy, Check, CloudSun, Loader2, Wrench } from 'lucide-react';
+import { Bot, User, Copy, Check, CloudSun, Loader2, Wrench, MapPin, Star, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from './markdown-renderer';
+import { PlaceDetailModal } from './place-detail-modal';
+
+const PRICE_LABELS: Record<string, string> = {
+  PRICE_LEVEL_FREE: 'Free',
+  PRICE_LEVEL_INEXPENSIVE: '$',
+  PRICE_LEVEL_MODERATE: '$$',
+  PRICE_LEVEL_EXPENSIVE: '$$$',
+  PRICE_LEVEL_VERY_EXPENSIVE: '$$$$',
+};
 
 interface ChatMessagesProps {
   messages: Message[];
@@ -14,6 +23,7 @@ interface ChatMessagesProps {
 
 export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -61,6 +71,113 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                 <div className="mb-3 space-y-2">
                   {message.toolInvocations.map((toolInvocation) => {
                     const { toolName, toolCallId, state } = toolInvocation;
+
+                    if (toolName === 'searchPlaces') {
+                      const args = toolInvocation.args as {
+                        textQuery?: string;
+                        useUserLocation?: boolean;
+                      };
+                      const result =
+                        state === 'result'
+                          ? (toolInvocation.result as {
+                              query?: string;
+                              totalResults?: number;
+                              places?: {
+                                id: string;
+                                displayName: string;
+                                formattedAddress: string;
+                                rating?: number | null;
+                                userRatingCount?: number;
+                                priceLevel?: string | null;
+                                primaryTypeDisplayName?: string | null;
+                                mapsUrl?: string;
+                              }[];
+                              error?: string;
+                            })
+                          : null;
+
+                      return (
+                        <div key={toolCallId} className="space-y-2">
+                          <div className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs">
+                            <MapPin className="h-4 w-4 text-emerald-500 animate-pulse" />
+                            {state === 'result' ? (
+                              <span>
+                                Found{' '}
+                                <strong className="text-foreground">
+                                  {result?.places?.length || 0} places
+                                </strong>{' '}
+                                for &quot;<strong className="text-foreground">{args?.textQuery}</strong>&quot;
+                                {args?.useUserLocation ? ' near your location' : ''}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5">
+                                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                Searching Google Places for &quot;
+                                <strong className="text-foreground">{args?.textQuery}</strong>&quot;...
+                              </span>
+                            )}
+                          </div>
+
+                          {state === 'result' && result?.places && result.places.length > 0 && (
+                            <div className="grid gap-2.5 sm:grid-cols-2">
+                              {result.places.map((place) => (
+                                <div
+                                  key={place.id}
+                                  onClick={() => setSelectedPlaceId(place.id)}
+                                  className="group/place-card flex flex-col justify-between gap-2 rounded-xl bg-background border border-border/80 p-3 shadow-2xs text-foreground hover:border-primary/50 hover:shadow-md cursor-pointer transition-all active:scale-[0.99]"
+                                >
+                                  <div className="space-y-1">
+                                    <div className="flex items-start justify-between gap-1.5">
+                                      <h4 className="font-semibold text-xs leading-snug line-clamp-1 group-hover/place-card:text-primary transition-colors">
+                                        {place.displayName}
+                                      </h4>
+                                      {typeof place.rating === 'number' && (
+                                        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                          <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                                          {place.rating.toFixed(1)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed flex items-start gap-1">
+                                      <MapPin className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+                                      <span>{place.formattedAddress}</span>
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 text-[10px]">
+                                    <div className="flex items-center gap-1.5">
+                                      {place.primaryTypeDisplayName && (
+                                        <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
+                                          {place.primaryTypeDisplayName}
+                                        </span>
+                                      )}
+                                      {place.priceLevel && PRICE_LABELS[place.priceLevel] && (
+                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                          {PRICE_LABELS[place.priceLevel]}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {place.mapsUrl && (
+                                      <a
+                                        href={place.mapsUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                                      >
+                                        Maps
+                                        <ExternalLink className="h-2.5 w-2.5" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
 
                     if (toolName === 'getWeather') {
                       const args = toolInvocation.args as { city?: string };
@@ -147,6 +264,11 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
           </div>
         </div>
       )}
+      {/* Detail Modal */}
+      <PlaceDetailModal
+        placeId={selectedPlaceId}
+        onClose={() => setSelectedPlaceId(null)}
+      />
     </div>
   );
 }
