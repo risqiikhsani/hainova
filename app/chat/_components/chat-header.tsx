@@ -1,7 +1,8 @@
 'use client';
 
-import { Sparkles, Trash2, MapPin, Loader2, CheckCircle2 } from 'lucide-react';
+import { Trash2, MapPin, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ModelSelector } from './model-selector';
 
 interface ChatHeaderProps {
   onClear: () => void;
@@ -20,35 +21,29 @@ export function ChatHeader({
 }: ChatHeaderProps) {
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-background/80 px-4 py-3 backdrop-blur-md">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-xs">
-          <Sparkles className="h-5 w-5" />
-        </div>
+      <div className="flex items-center gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold leading-tight tracking-tight">
-              Hainova AI
-            </h1>
-            <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-              gpt-4o-mini
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
+          <h1 className="text-base font-semibold leading-tight tracking-tight">
+            Hainova AI
+          </h1>
+          <p className="text-xs text-muted-foreground hidden sm:block">
             Smart assistant powered by Vercel AI SDK
           </p>
         </div>
+        <div className="h-4 w-px bg-border hidden sm:block" />
+        <ModelSelector />
       </div>
 
       <div className="flex items-center gap-2">
         {geoStatus === 'granted' ? (
           <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>Location Active</span>
+            <span className="hidden sm:inline">Location Active</span>
           </div>
         ) : geoStatus === 'loading' ? (
           <div className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            <span>Locating...</span>
+            <span className="hidden sm:inline">Locating...</span>
           </div>
         ) : (
           <Button
@@ -71,7 +66,7 @@ export function ChatHeader({
             className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" />
-            Clear Chat
+            <span className="hidden sm:inline">Clear Chat</span>
           </Button>
         )}
       </div>

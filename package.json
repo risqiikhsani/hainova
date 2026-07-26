@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/google": "^2.0.85",
     "@ai-sdk/openai": "^4.0.20",
     "@ai-sdk/react": "^4.0.40",
     "@base-ui/react": "^1.6.0",
@@ -21,6 +22,7 @@
     "lucide-react": "^1.26.0",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
+    "ollama-ai-provider-v2": "^4.0.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "^10.1.0",

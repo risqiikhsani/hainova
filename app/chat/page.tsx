@@ -4,6 +4,7 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useRef, useEffect, useState } from 'react';
 import { useGeolocation } from '@/hooks/use-geolocation';
+import { useModelSettings } from '@/hooks/use-model-settings';
 import { ChatHeader } from './_components/chat-header';
 import { ChatMessages } from './_components/chat-messages';
 import { ChatInput } from './_components/chat-input';
@@ -11,12 +12,15 @@ import { EmptyState } from './_components/empty-state';
 
 export default function ChatPage() {
   const { coords, status: geoStatus, requestLocation } = useGeolocation();
+  const { provider, ollamaBaseUrl, getActiveModelId } = useModelSettings();
   const [input, setInput] = useState('');
 
-  // coords change over time, but transport `body` is captured once at
-  // creation in v5 — so read it from a ref at request time instead.
+  // coords & settings change over time, but transport `body` is evaluated via dynamic getter function
   const coordsRef = useRef(coords);
   coordsRef.current = coords;
+
+  const modelSettingsRef = useRef({ provider, ollamaBaseUrl, activeModelId: getActiveModelId() });
+  modelSettingsRef.current = { provider, ollamaBaseUrl, activeModelId: getActiveModelId() };
 
   const { messages, status, stop, setMessages, sendMessage } = useChat({
     transport: new DefaultChatTransport({
@@ -25,6 +29,12 @@ export default function ChatPage() {
         userLocation: coordsRef.current
           ? { lat: coordsRef.current.lat, lng: coordsRef.current.lng }
           : undefined,
+        provider: modelSettingsRef.current.provider,
+        modelId: modelSettingsRef.current.activeModelId || 'gpt-4o-mini',
+        ollamaBaseUrl:
+          modelSettingsRef.current.provider === 'ollama'
+            ? modelSettingsRef.current.ollamaBaseUrl
+            : undefined,
       }),
     }),
     onError: (err) => {

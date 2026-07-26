@@ -1,28 +1,124 @@
 import { openai } from '@ai-sdk/openai';
-import { streamText, tool, convertToModelMessages, stepCountIs, UIMessage } from 'ai';
+import { google } from '@ai-sdk/google';
+import { createOllama } from 'ollama-ai-provider-v2';
+import {
+  streamText,
+  tool,
+  convertToModelMessages,
+  stepCountIs,
+  UIMessage,
+  type LanguageModel,
+} from 'ai';
 import { z } from 'zod';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
+const SUPPORTED_PROVIDERS = ['openai', 'google', 'ollama'] as const;
+type Provider = (typeof SUPPORTED_PROVIDERS)[number];
+
 interface ChatRequestBody {
   messages: UIMessage[];
   userLocation?: { lat: number; lng: number };
+  provider?: string;
+  modelId?: string;
+  ollamaBaseUrl?: string;
+}
+
+function jsonError(message: string, status: number) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 export async function POST(req: Request) {
-  const { messages, userLocation }: ChatRequestBody = await req.json();
+  const {
+    messages,
+    userLocation,
+    provider: rawProvider = 'openai',
+    modelId,
+    ollamaBaseUrl = 'http://localhost:11434',
+  }: ChatRequestBody = await req.json();
 
-  if (!process.env.OPENAI_API_KEY) {
-    return new Response(
-      JSON.stringify({
-        error:
-          'OPENAI_API_KEY is not configured. Please set OPENAI_API_KEY in your .env.local file to use the AI chat.',
-      }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
+  // Validate the provider name before doing anything else, so a typo'd
+  // or unsupported provider fails fast with a clear message instead of
+  // silently falling through to the OpenAI branch.
+  if (!SUPPORTED_PROVIDERS.includes(rawProvider as Provider)) {
+    return jsonError(
+      `Unsupported provider "${rawProvider}". Supported providers: ${SUPPORTED_PROVIDERS.join(', ')}.`,
+      400
+    );
+  }
+  const provider = rawProvider as Provider;
+
+  // Per-provider default model ids, used when the client doesn't specify one
+  const DEFAULT_MODEL_IDS: Record<Provider, string> = {
+    openai: 'gpt-4o-mini',
+    google: 'gemini-2.5-flash-lite',
+    ollama: 'llama3.2',
+  };
+  const resolvedModelId = modelId || DEFAULT_MODEL_IDS[provider];
+
+  // Validate API key / provider configuration before initializing stream
+  if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
+    return jsonError(
+      'OPENAI_API_KEY is not configured. Please set OPENAI_API_KEY in your .env.local file to use OpenAI models.',
+      400
+    );
+  }
+
+  if (
+    provider === 'google' &&
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
+    !process.env.GEMINI_API_KEY
+  ) {
+    return jsonError(
+      'GOOGLE_GENERATIVE_AI_API_KEY is not configured. Please set GOOGLE_GENERATIVE_AI_API_KEY in your .env.local file to use Google Gemini models.',
+      400
+    );
+  }
+
+  // Ollama runs locally and has no API key, but a reachable base URL is
+  // required — fail fast with a clear message rather than letting the
+  // request hang until streamText's own fetch times out.
+  if (provider === 'ollama') {
+    try {
+      const pingRes = await fetch(`${ollamaBaseUrl.replace(/\/$/, '')}/api/tags`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!pingRes.ok) {
+        return jsonError(
+          `Ollama server at ${ollamaBaseUrl} responded with status ${pingRes.status}.`,
+          400
+        );
       }
+    } catch {
+      return jsonError(
+        `Could not reach Ollama server at ${ollamaBaseUrl}. Make sure Ollama is running (\`ollama serve\`) and the URL is correct.`,
+        400
+      );
+    }
+  }
+
+  // Resolve language model instance based on provider
+  let modelInstance: LanguageModel;
+  try {
+    if (provider === 'google') {
+      modelInstance = google(resolvedModelId);
+    } else if (provider === 'ollama') {
+      const sanitizedBaseUrl = ollamaBaseUrl.replace(/\/$/, '');
+      const ollama = createOllama({
+        baseURL: `${sanitizedBaseUrl}/api`,
+      });
+      modelInstance = ollama(resolvedModelId);
+    } else {
+      modelInstance = openai(resolvedModelId);
+    }
+  } catch (err: any) {
+    return jsonError(
+      `Failed to initialize ${provider} model "${resolvedModelId}": ${err?.message || 'Unknown error'}`,
+      400
     );
   }
 
@@ -36,30 +132,47 @@ export async function POST(req: Request) {
       ? `User's current coordinates: Latitude ${userLocation.lat}, Longitude ${userLocation.lng}. When the user asks for places "near me", "nearby", or around their current location, set "useUserLocation" to true when calling "searchPlaces".`
       : 'User location is currently unknown or not shared. If the user asks for places "near me" without specifying a location, remind them to enable location access or specify a city name.';
 
+    const isLocalOrSmallModel = provider === 'ollama';
+
+    const systemPrompt = `You are Hainova AI, a helpful, intelligent, and friendly AI assistant.
+
+### TOOL USE GUIDELINES & STRICT GUARDRAILS:
+1. **ONLY call tools when strictly necessary** to answer queries requiring real-time external data (live weather or specific place recommendations).
+2. **DO NOT call any tools** for:
+   - Greetings, casual chat, or follow-ups (e.g. "hi", "hello", "how are you", "who are you").
+   - General knowledge, math, coding, explanations, history, or science questions.
+   - Questions where the user has already provided all necessary information in their text.
+
+### WHEN TO USE TOOLS:
+- Call **getWeather** ONLY when the user explicitly asks for current weather, forecast, temperature, or climate conditions of a specific city or region.
+- Call **searchPlaces** ONLY when the user asks to find, locate, recommend, or search for real-world places, hotels, restaurants, cafes, attractions, or spots.
+
+### RESPONSE FORMAT:
+- If a tool is called, synthesize the tool results into a natural, helpful, and nicely structured response using Markdown.
+- If no tool is needed, respond directly and concisely to the user in plain text.
+${locationPromptContext}${
+      isLocalOrSmallModel
+        ? `\n\nCRITICAL FOR LOCAL MODEL REASONING: Think carefully before invoking tools. If the message is a greeting or general question, DO NOT call any tool.`
+        : ''
+    }`;
+
     const result = streamText({
-      model: openai('gpt-4o-mini'),
+      model: modelInstance,
       // Client sends UIMessage[] (parts-based); convert to ModelMessage[] for the LLM
       // Note: convertToModelMessages is async as of AI SDK v6 (was sync in v5)
       messages: await convertToModelMessages(messages),
-      // maxSteps was removed in v5 — stopWhen replaces it.
       // stepCountIs(5) caps the agentic tool-calling loop at 5 steps.
       stopWhen: stepCountIs(5),
-      system: `You are Hainova AI, a helpful, intelligent, and friendly AI assistant.
-You have access to real-time tools including OpenWeatherMap and Google Places API search.
-${locationPromptContext}
-When users ask about the weather, temperature, or climate conditions for any city or location, ALWAYS use the "getWeather" tool to fetch live data before answering.
-When users ask to find, search, or recommend places, hotels, restaurants, cafes, spots, or attractions (e.g. "hotels in Tokyo", "best ramen near me", "coffee shops in Paris"), ALWAYS use the "searchPlaces" tool to search for real places before answering.
-Provide concise, clear, and well-structured responses alongside tool results.`,
+      system: systemPrompt,
       tools: {
         searchPlaces: tool({
           description:
-            'Search for places, hotels, restaurants, cafes, attractions, or locations using Google Places API.',
-          // "parameters" was renamed to "inputSchema" in v5
+            'Search for real-world places, hotels, restaurants, cafes, attractions, or locations using Google Places API. ONLY use when user asks to find/locate specific places.',
           inputSchema: z.object({
             textQuery: z
               .string()
               .describe(
-                'The place search query, e.g. "hotels in Tokyo", "ramen restaurants", "coffee shops"'
+                'A clean place query string without full sentence filler, e.g. "hotels in Tokyo", "ramen restaurants", "coffee shops"'
               ),
             useUserLocation: z
               .boolean()
@@ -216,25 +329,17 @@ Provide concise, clear, and well-structured responses alongside tool results.`,
       },
     });
 
-    // toDataStreamResponse() -> toUIMessageStreamResponse() in v5
     return result.toUIMessageStreamResponse({
       onError: (error) => {
-        // By default v5 does NOT forward error details to the client
-        // (to avoid leaking sensitive info). Return a safe message here.
         console.error('Stream error:', error);
-        return 'An error occurred while processing your chat request.';
+        return `An error occurred while processing your request with ${provider}/${resolvedModelId}.`;
       },
     });
   } catch (error: any) {
     console.error('Error in chat API route:', error);
-    return new Response(
-      JSON.stringify({
-        error: error?.message || 'An error occurred while processing your chat request.',
-      }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
+    return jsonError(
+      error?.message || 'An error occurred while processing your chat request.',
+      500
     );
   }
 }
