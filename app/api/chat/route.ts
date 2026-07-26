@@ -10,6 +10,7 @@ import {
   type LanguageModel,
 } from 'ai';
 import { z } from 'zod';
+import { checkAndIncrementMapRateLimit } from '@/lib/rate-limit';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -187,6 +188,15 @@ ${locationPromptContext}${
               .describe('Search radius in meters when biasing location (default: 5000).'),
           }),
           execute: async ({ textQuery, useUserLocation, radiusMeters }) => {
+            const rateLimit = await checkAndIncrementMapRateLimit();
+            if (!rateLimit.allowed) {
+              return {
+                error:
+                  rateLimit.error ??
+                  'Daily limit exceeded for map requests. Please try again tomorrow.',
+              };
+            }
+
             const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
 
             if (!googleApiKey) {

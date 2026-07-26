@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { checkAndIncrementMapRateLimit } from "@/lib/rate-limit"
 import type {
   PlaceDetails,
   DetailsApiResponse,
@@ -30,6 +31,14 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<DetailsApiResponse | ApiErrorResponse>> {
   try {
+    const rateLimit = await checkAndIncrementMapRateLimit()
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: rateLimit.error ?? "Daily limit exceeded" },
+        { status: 429 }
+      )
+    }
+
     // In Next.js 15+, params is a Promise — must be awaited
     const { id } = await params
 

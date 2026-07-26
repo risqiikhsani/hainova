@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { checkAndIncrementMapRateLimit } from "@/lib/rate-limit"
 import type { EmbedUrlApiResponse, ApiErrorResponse } from "@/types/places"
 
 // Supported embed modes
@@ -8,6 +9,14 @@ export async function GET(
   req: NextRequest
 ): Promise<NextResponse<EmbedUrlApiResponse | ApiErrorResponse>> {
   try {
+    const rateLimit = await checkAndIncrementMapRateLimit()
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: rateLimit.error ?? "Daily limit exceeded" },
+        { status: 429 }
+      )
+    }
+
     const apiKey = process.env.GOOGLE_MAPS_API_KEY
     if (!apiKey) {
       return NextResponse.json(

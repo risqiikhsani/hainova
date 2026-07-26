@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { checkAndIncrementMapRateLimit } from "@/lib/rate-limit"
 import type {
   PlacesTextSearchRequest,
   PlacesTextSearchResponse,
@@ -23,6 +24,14 @@ export async function POST(
   req: NextRequest
 ): Promise<NextResponse<SearchApiResponse | ApiErrorResponse>> {
   try {
+    const rateLimit = await checkAndIncrementMapRateLimit()
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: rateLimit.error ?? "Daily limit exceeded" },
+        { status: 429 }
+      )
+    }
+
     const body = (await req.json()) as PlacesTextSearchRequest
 
     if (!body.textQuery?.trim()) {
