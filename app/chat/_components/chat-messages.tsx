@@ -109,7 +109,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                   return isUser ? (
                     <div
                       key={index}
-                      className="whitespace-pre-wrap leading-relaxed break-words"
+                      className="whitespace-pre-wrap leading-relaxed wrap-break-word"
                     >
                       {part.text}
                     </div>
@@ -246,7 +246,10 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                 }
 
                 // --- Any other tool call (static or dynamic) ---
-                if (isToolUIPart(part) || part.type === 'dynamic-tool') {
+                // isToolUIPart's type guard already covers both typed
+                // (tool-*) and dynamic-tool parts, so check dynamic-tool
+                // *inside* the narrowed block rather than OR-ing it in.
+                if (isToolUIPart(part)) {
                   const toolName =
                     part.type === 'dynamic-tool' ? part.toolName : getToolName(part);
                   return (

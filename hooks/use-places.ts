@@ -7,6 +7,7 @@ import type {
   SearchApiResponse,
   DetailsApiResponse,
   EmbedUrlApiResponse,
+  PlacesTextSearchRequest,
 } from "@/types/places"
 
 // ─── Search ──────────────────────────────────────────────────────────────────
