@@ -1,7 +1,8 @@
 'use client';
 
-import { useChat } from 'ai/react';
-import { useRef, useEffect } from 'react';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+import { useRef, useEffect, useState } from 'react';
 import { useGeolocation } from '@/hooks/use-geolocation';
 import { ChatHeader } from './_components/chat-header';
 import { ChatMessages } from './_components/chat-messages';
@@ -10,25 +11,29 @@ import { EmptyState } from './_components/empty-state';
 
 export default function ChatPage() {
   const { coords, status: geoStatus, requestLocation } = useGeolocation();
+  const [input, setInput] = useState('');
 
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    stop,
-    setMessages,
-    append,
-  } = useChat({
-    api: '/api/chat',
-    body: {
-      userLocation: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
-    },
+  // coords change over time, but transport `body` is captured once at
+  // creation in v5 — so read it from a ref at request time instead.
+  const coordsRef = useRef(coords);
+  coordsRef.current = coords;
+
+  const { messages, status, stop, setMessages, sendMessage } = useChat({
+    transport: new DefaultChatTransport({
+      api: '/api/chat',
+      body: () => ({
+        userLocation: coordsRef.current
+          ? { lat: coordsRef.current.lat, lng: coordsRef.current.lng }
+          : undefined,
+      }),
+    }),
     onError: (err) => {
       console.error('Chat error:', err);
     },
   });
+
+  // v5 replaces the old boolean isLoading with a status string
+  const isLoading = status === 'submitted' || status === 'streaming';
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -43,11 +48,21 @@ export default function ChatPage() {
     setMessages([]);
   };
 
+  const handleSubmit = (e?: { preventDefault?: () => void }) => {
+    e?.preventDefault?.();
+    if (!input.trim()) return;
+    sendMessage({ text: input });
+    setInput('');
+  };
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    setInput(e.target.value);
+  };
+
   const handleSelectPrompt = (promptText: string) => {
-    append({
-      role: 'user',
-      content: promptText,
-    });
+    sendMessage({ text: promptText });
   };
 
   return (

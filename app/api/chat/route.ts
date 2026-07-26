@@ -1,12 +1,17 @@
 import { openai } from '@ai-sdk/openai';
-import { streamText, tool } from 'ai';
+import { streamText, tool, convertToModelMessages, stepCountIs, UIMessage } from 'ai';
 import { z } from 'zod';
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
+interface ChatRequestBody {
+  messages: UIMessage[];
+  userLocation?: { lat: number; lng: number };
+}
+
 export async function POST(req: Request) {
-  const { messages, userLocation } = await req.json();
+  const { messages, userLocation }: ChatRequestBody = await req.json();
 
   if (!process.env.OPENAI_API_KEY) {
     return new Response(
@@ -33,8 +38,12 @@ export async function POST(req: Request) {
 
     const result = streamText({
       model: openai('gpt-4o-mini'),
-      messages,
-      maxSteps: 5,
+      // Client sends UIMessage[] (parts-based); convert to ModelMessage[] for the LLM
+      // Note: convertToModelMessages is async as of AI SDK v6 (was sync in v5)
+      messages: await convertToModelMessages(messages),
+      // maxSteps was removed in v5 — stopWhen replaces it.
+      // stepCountIs(5) caps the agentic tool-calling loop at 5 steps.
+      stopWhen: stepCountIs(5),
       system: `You are Hainova AI, a helpful, intelligent, and friendly AI assistant.
 You have access to real-time tools including OpenWeatherMap and Google Places API search.
 ${locationPromptContext}
@@ -45,7 +54,8 @@ Provide concise, clear, and well-structured responses alongside tool results.`,
         searchPlaces: tool({
           description:
             'Search for places, hotels, restaurants, cafes, attractions, or locations using Google Places API.',
-          parameters: z.object({
+          // "parameters" was renamed to "inputSchema" in v5
+          inputSchema: z.object({
             textQuery: z
               .string()
               .describe(
@@ -145,7 +155,7 @@ Provide concise, clear, and well-structured responses alongside tool results.`,
         getWeather: tool({
           description:
             'Get the current weather conditions for a specified city or location using OpenWeatherMap API.',
-          parameters: z.object({
+          inputSchema: z.object({
             city: z
               .string()
               .describe('The name of the city or location (e.g., "Tokyo", "London, UK", "Jakarta")'),
@@ -206,7 +216,15 @@ Provide concise, clear, and well-structured responses alongside tool results.`,
       },
     });
 
-    return result.toDataStreamResponse();
+    // toDataStreamResponse() -> toUIMessageStreamResponse() in v5
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        // By default v5 does NOT forward error details to the client
+        // (to avoid leaking sensitive info). Return a safe message here.
+        console.error('Stream error:', error);
+        return 'An error occurred while processing your chat request.';
+      },
+    });
   } catch (error: any) {
     console.error('Error in chat API route:', error);
     return new Response(

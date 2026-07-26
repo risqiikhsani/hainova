@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { create } from "zustand"
 
 export type GeolocationStatus =
   | "idle"
@@ -14,33 +14,50 @@ export interface Coords {
   lng: number
 }
 
-export function useGeolocation() {
-  const [status, setStatus] = useState<GeolocationStatus>("idle")
-  const [coords, setCoords] = useState<Coords | null>(null)
+interface GeolocationState {
+  status: GeolocationStatus
+  coords: Coords | null
+  requestLocation: () => void
+}
 
-  const requestLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      setStatus("unavailable")
+export const useGeolocationStore = create<GeolocationState>((set, get) => ({
+  status: "idle",
+  coords: null,
+  requestLocation: () => {
+    if (get().status === "loading") return
+
+    if (typeof window === "undefined" || !navigator?.geolocation) {
+      set({ status: "unavailable" })
       return
     }
-    setStatus("loading")
+
+    set({ status: "loading" })
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCoords({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
+        set({
+          coords: {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          },
+          status: "granted",
         })
-        setStatus("granted")
       },
       () => {
-        setStatus("denied")
+        set({ status: "denied" })
       },
       {
         enableHighAccuracy: true,
         timeout: 10000,
       }
     )
-  }, [])
+  },
+}))
+
+export function useGeolocation() {
+  const status = useGeolocationStore((s) => s.status)
+  const coords = useGeolocationStore((s) => s.coords)
+  const requestLocation = useGeolocationStore((s) => s.requestLocation)
 
   return { status, coords, requestLocation }
 }

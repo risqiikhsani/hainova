@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Message } from 'ai';
+import { UIMessage, isToolUIPart, getToolName } from 'ai';
 import { Bot, User, Copy, Check, CloudSun, Loader2, Wrench, MapPin, Star, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,42 @@ const PRICE_LABELS: Record<string, string> = {
   PRICE_LEVEL_VERY_EXPENSIVE: '$$$$',
 };
 
+// Shapes for the two tools we render specially. Adjust to match your
+// actual tool's inputSchema / execute return type.
+interface SearchPlacesInput {
+  textQuery?: string;
+  useUserLocation?: boolean;
+}
+interface SearchPlacesOutput {
+  query?: string;
+  totalResults?: number;
+  places?: {
+    id: string;
+    displayName: string;
+    formattedAddress: string;
+    rating?: number | null;
+    userRatingCount?: number;
+    priceLevel?: string | null;
+    primaryTypeDisplayName?: string | null;
+    mapsUrl?: string;
+  }[];
+  error?: string;
+}
+interface GetWeatherInput {
+  city?: string;
+}
+
 interface ChatMessagesProps {
-  messages: Message[];
+  messages: UIMessage[];
   isLoading: boolean;
+}
+
+// Pull the plain text out of a message's parts, for copy-to-clipboard.
+function getMessageText(message: UIMessage): string {
+  return message.parts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n\n');
 }
 
 export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
@@ -31,11 +64,14 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const lastMessage = messages[messages.length - 1];
+
   return (
     <div className="flex flex-col space-y-4 p-4 md:p-6">
       {messages.map((message) => {
         const isUser = message.role === 'user';
         const isCopied = copiedId === message.id;
+        const textContent = getMessageText(message);
 
         return (
           <div
@@ -66,175 +102,174 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                   : 'bg-muted/70 border border-border/60 text-foreground rounded-tl-xs'
               )}
             >
-              {/* Tool Invocations Display */}
-              {message.toolInvocations && message.toolInvocations.length > 0 && (
-                <div className="mb-3 space-y-2">
-                  {message.toolInvocations.map((toolInvocation) => {
-                    const { toolName, toolCallId, state } = toolInvocation;
+              {/* Parts: text + tool calls, rendered in order */}
+              {message.parts.map((part, index) => {
+                // --- Plain text ---
+                if (part.type === 'text') {
+                  return isUser ? (
+                    <div
+                      key={index}
+                      className="whitespace-pre-wrap leading-relaxed break-words"
+                    >
+                      {part.text}
+                    </div>
+                  ) : (
+                    <MarkdownRenderer key={index} content={part.text} />
+                  );
+                }
 
-                    if (toolName === 'searchPlaces') {
-                      const args = toolInvocation.args as {
-                        textQuery?: string;
-                        useUserLocation?: boolean;
-                      };
-                      const result =
-                        state === 'result'
-                          ? (toolInvocation.result as {
-                              query?: string;
-                              totalResults?: number;
-                              places?: {
-                                id: string;
-                                displayName: string;
-                                formattedAddress: string;
-                                rating?: number | null;
-                                userRatingCount?: number;
-                                priceLevel?: string | null;
-                                primaryTypeDisplayName?: string | null;
-                                mapsUrl?: string;
-                              }[];
-                              error?: string;
-                            })
-                          : null;
+                // --- searchPlaces tool ---
+                if (part.type === 'tool-searchPlaces') {
+                  const input = part.input as SearchPlacesInput | undefined;
+                  const output =
+                    part.state === 'output-available'
+                      ? (part.output as SearchPlacesOutput)
+                      : null;
 
-                      return (
-                        <div key={toolCallId} className="space-y-2">
-                          <div className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs">
-                            <MapPin className="h-4 w-4 text-emerald-500 animate-pulse" />
-                            {state === 'result' ? (
-                              <span>
-                                Found{' '}
-                                <strong className="text-foreground">
-                                  {result?.places?.length || 0} places
-                                </strong>{' '}
-                                for &quot;<strong className="text-foreground">{args?.textQuery}</strong>&quot;
-                                {args?.useUserLocation ? ' near your location' : ''}
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1.5">
-                                <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                                Searching Google Places for &quot;
-                                <strong className="text-foreground">{args?.textQuery}</strong>&quot;...
-                              </span>
-                            )}
-                          </div>
+                  return (
+                    <div key={part.toolCallId} className="mb-3 space-y-2">
+                      <div className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs">
+                        <MapPin className="h-4 w-4 text-emerald-500 animate-pulse" />
+                        {part.state === 'output-available' ? (
+                          <span>
+                            Found{' '}
+                            <strong className="text-foreground">
+                              {output?.places?.length || 0} places
+                            </strong>{' '}
+                            for &quot;<strong className="text-foreground">{input?.textQuery}</strong>&quot;
+                            {input?.useUserLocation ? ' near your location' : ''}
+                          </span>
+                        ) : part.state === 'output-error' ? (
+                          <span className="text-destructive">
+                            Search failed: {part.errorText}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5">
+                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                            Searching Google Places for &quot;
+                            <strong className="text-foreground">{input?.textQuery}</strong>&quot;...
+                          </span>
+                        )}
+                      </div>
 
-                          {state === 'result' && result?.places && result.places.length > 0 && (
-                            <div className="grid gap-2.5 sm:grid-cols-2">
-                              {result.places.map((place) => (
-                                <div
-                                  key={place.id}
-                                  onClick={() => setSelectedPlaceId(place.id)}
-                                  className="group/place-card flex flex-col justify-between gap-2 rounded-xl bg-background border border-border/80 p-3 shadow-2xs text-foreground hover:border-primary/50 hover:shadow-md cursor-pointer transition-all active:scale-[0.99]"
-                                >
-                                  <div className="space-y-1">
-                                    <div className="flex items-start justify-between gap-1.5">
-                                      <h4 className="font-semibold text-xs leading-snug line-clamp-1 group-hover/place-card:text-primary transition-colors">
-                                        {place.displayName}
-                                      </h4>
-                                      {typeof place.rating === 'number' && (
-                                        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                                          <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
-                                          {place.rating.toFixed(1)}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed flex items-start gap-1">
-                                      <MapPin className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-                                      <span>{place.formattedAddress}</span>
-                                    </p>
-                                  </div>
-
-                                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 text-[10px]">
-                                    <div className="flex items-center gap-1.5">
-                                      {place.primaryTypeDisplayName && (
-                                        <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
-                                          {place.primaryTypeDisplayName}
-                                        </span>
-                                      )}
-                                      {place.priceLevel && PRICE_LABELS[place.priceLevel] && (
-                                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                          {PRICE_LABELS[place.priceLevel]}
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {place.mapsUrl && (
-                                      <a
-                                        href={place.mapsUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
-                                      >
-                                        Maps
-                                        <ExternalLink className="h-2.5 w-2.5" />
-                                      </a>
+                      {part.state === 'output-available' &&
+                        output?.places &&
+                        output.places.length > 0 && (
+                          <div className="grid gap-2.5 sm:grid-cols-2">
+                            {output.places.map((place) => (
+                              <div
+                                key={place.id}
+                                onClick={() => setSelectedPlaceId(place.id)}
+                                className="group/place-card flex flex-col justify-between gap-2 rounded-xl bg-background border border-border/80 p-3 shadow-2xs text-foreground hover:border-primary/50 hover:shadow-md cursor-pointer transition-all active:scale-[0.99]"
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-start justify-between gap-1.5">
+                                    <h4 className="font-semibold text-xs leading-snug line-clamp-1 group-hover/place-card:text-primary transition-colors">
+                                      {place.displayName}
+                                    </h4>
+                                    {typeof place.rating === 'number' && (
+                                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                        <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+                                        {place.rating.toFixed(1)}
+                                      </span>
                                     )}
                                   </div>
+                                  <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed flex items-start gap-1">
+                                    <MapPin className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+                                    <span>{place.formattedAddress}</span>
+                                  </p>
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
 
-                    if (toolName === 'getWeather') {
-                      const args = toolInvocation.args as { city?: string };
-                      return (
-                        <div
-                          key={toolCallId}
-                          className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs"
-                        >
-                          <CloudSun className="h-4 w-4 text-amber-500 animate-pulse" />
-                          {state === 'result' ? (
-                            <span>
-                              Retrieved live weather data for{' '}
-                              <strong className="text-foreground">{args?.city}</strong>
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1.5">
-                              <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                              Fetching OpenWeatherMap data for{' '}
-                              <strong className="text-foreground">{args?.city}</strong>...
-                            </span>
-                          )}
-                        </div>
-                      );
-                    }
+                                <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 text-[10px]">
+                                  <div className="flex items-center gap-1.5">
+                                    {place.primaryTypeDisplayName && (
+                                      <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-muted-foreground">
+                                        {place.primaryTypeDisplayName}
+                                      </span>
+                                    )}
+                                    {place.priceLevel && PRICE_LABELS[place.priceLevel] && (
+                                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                        {PRICE_LABELS[place.priceLevel]}
+                                      </span>
+                                    )}
+                                  </div>
 
-                    // Generic tool call fallback
-                    return (
-                      <div
-                        key={toolCallId}
-                        className="flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground"
-                      >
-                        <Wrench className="h-3.5 w-3.5 text-primary" />
-                        <span>Tool: {toolName}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                                  {place.mapsUrl && (
+                                    <a
+                                      href={place.mapsUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                                    >
+                                      Maps
+                                      <ExternalLink className="h-2.5 w-2.5" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  );
+                }
 
-              {/* Message Content */}
-              {message.content && (
-                isUser ? (
-                  <div className="whitespace-pre-wrap leading-relaxed break-words">
-                    {message.content}
-                  </div>
-                ) : (
-                  <MarkdownRenderer content={message.content} />
-                )
-              )}
+                // --- getWeather tool ---
+                if (part.type === 'tool-getWeather') {
+                  const input = part.input as GetWeatherInput | undefined;
+
+                  return (
+                    <div
+                      key={part.toolCallId}
+                      className="mb-3 flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs"
+                    >
+                      <CloudSun className="h-4 w-4 text-amber-500 animate-pulse" />
+                      {part.state === 'output-available' ? (
+                        <span>
+                          Retrieved live weather data for{' '}
+                          <strong className="text-foreground">{input?.city}</strong>
+                        </span>
+                      ) : part.state === 'output-error' ? (
+                        <span className="text-destructive">
+                          Weather lookup failed: {part.errorText}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                          Fetching OpenWeatherMap data for{' '}
+                          <strong className="text-foreground">{input?.city}</strong>...
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+
+                // --- Any other tool call (static or dynamic) ---
+                if (isToolUIPart(part) || part.type === 'dynamic-tool') {
+                  const toolName =
+                    part.type === 'dynamic-tool' ? part.toolName : getToolName(part);
+                  return (
+                    <div
+                      key={part.toolCallId}
+                      className="mb-3 flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground"
+                    >
+                      <Wrench className="h-3.5 w-3.5 text-primary" />
+                      <span>Tool: {toolName}</span>
+                    </div>
+                  );
+                }
+
+                return null;
+              })}
 
               {/* Copy action button for assistant messages */}
-              {!isUser && message.content && (
+              {!isUser && textContent && (
                 <div className="mt-2 flex justify-end">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleCopy(message.id, message.content)}
+                    onClick={() => handleCopy(message.id, textContent)}
                     className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100 text-muted-foreground hover:text-foreground"
                     title="Copy message"
                   >
@@ -252,7 +287,7 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
       })}
 
       {/* Loading Indicator */}
-      {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
+      {isLoading && lastMessage?.role !== 'assistant' && (
         <div className="flex items-start gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
             <Bot className="h-4 w-4 text-primary animate-spin" />
