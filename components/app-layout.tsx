@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   Compass,
   Home,
@@ -19,6 +19,7 @@ import {
   LocateOff,
   CheckCircle2,
   RotateCw,
+  LogOut,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
@@ -46,14 +47,26 @@ const NAV_ITEMS = [
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const { resolvedTheme, setTheme } = useTheme()
   const { status: geoStatus, coords, requestLocation } = useGeolocation()
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [mounted, setMounted] = React.useState(false)
+  const [protectionEnabled, setProtectionEnabled] = React.useState(false)
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false)
 
   React.useEffect(() => {
     setMounted(true)
+    // Check if password protection is enabled
+    fetch("/api/auth")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.protectionEnabled) {
+          setProtectionEnabled(true)
+        }
+      })
+      .catch((err) => console.error("Failed to check auth status:", err))
   }, [])
 
   // Close mobile sidebar on route change
@@ -63,6 +76,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === "dark" ? "light" : "dark")
+  }
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await fetch("/api/auth", { method: "DELETE" })
+      router.push("/login")
+      router.refresh()
+    } catch (error) {
+      console.error("Logout failed:", error)
+      setIsLoggingOut(false)
+    }
+  }
+
+  // Bypass layout wrapper for the login page
+  if (pathname === "/login") {
+    return <>{children}</>
   }
 
   // Location UI Component for Sidebar
@@ -332,6 +362,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </Button>
           )}
 
+          {/* Logout Button (shown if password protection is enabled) */}
+          {protectionEnabled && (
+            <Button
+              variant="ghost"
+              size={collapsed ? "icon-sm" : "sm"}
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className={cn(
+                "w-full text-xs text-destructive hover:bg-destructive/10 hover:text-destructive justify-start gap-2.5",
+                collapsed && "justify-center px-0"
+              )}
+              title={collapsed ? "Logout" : undefined}
+            >
+              {isLoggingOut ? (
+                <Loader2 className="size-4 animate-spin shrink-0" />
+              ) : (
+                <LogOut className="size-4 shrink-0" />
+              )}
+              {!collapsed && <span className="truncate">Logout</span>}
+            </Button>
+          )}
+
           {!collapsed && (
             <div className="px-2.5 py-1.5 text-[10px] text-muted-foreground/70 flex items-center justify-between border-t border-border/20 mt-1">
               <span>Hainova v0.1</span>
@@ -439,11 +491,29 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            <div className="border-t border-border/40 pt-3 mt-auto text-xs text-muted-foreground">
-              <p className="text-[11px] font-medium text-foreground">
-                Hainova Hub
-              </p>
-              <p className="text-[10px]">Location AI & Google Places</p>
+            <div className="border-t border-border/40 pt-3 mt-auto text-xs text-muted-foreground space-y-2">
+              {protectionEnabled && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="w-full text-xs text-destructive hover:bg-destructive/10 border-destructive/30"
+                >
+                  {isLoggingOut ? (
+                    <Loader2 className="mr-2 size-3.5 animate-spin" />
+                  ) : (
+                    <LogOut className="mr-2 size-3.5" />
+                  )}
+                  Logout
+                </Button>
+              )}
+              <div>
+                <p className="text-[11px] font-medium text-foreground">
+                  Hainova Hub
+                </p>
+                <p className="text-[10px]">Location AI & Google Places</p>
+              </div>
             </div>
           </div>
         </div>
