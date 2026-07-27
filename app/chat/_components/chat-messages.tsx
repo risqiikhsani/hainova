@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { UIMessage, isToolUIPart, getToolName } from 'ai';
-import { Bot, User, Copy, Check, CloudSun, Loader2, Wrench, MapPin, Star, ExternalLink } from 'lucide-react';
+import { Bot, User, Copy, Check, Loader2, Wrench, MapPin, Star, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from './markdown-renderer';
 import { PlaceDetailModal } from './place-detail-modal';
 import { TavilySearchCard, TavilySearchInput, TavilySearchOutput } from './tavily-search-card';
 import { TavilyExtractCard, TavilyExtractInput, TavilyExtractOutput } from './tavily-extract-card';
+import { WeatherCard, GetWeatherInput, GetWeatherOutput } from './weather-card';
 
 const PRICE_LABELS: Record<string, string> = {
   PRICE_LEVEL_FREE: 'Free',
@@ -38,9 +39,6 @@ interface SearchPlacesOutput {
     mapsUrl?: string;
   }[];
   error?: string;
-}
-interface GetWeatherInput {
-  city?: string;
 }
 
 interface ChatMessagesProps {
@@ -219,31 +217,18 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
 
                 // --- getWeather tool ---
                 if (part.type === 'tool-getWeather') {
-                  const input = part.input as GetWeatherInput | undefined;
-
                   return (
-                    <div
+                    <WeatherCard
                       key={part.toolCallId}
-                      className="mb-3 flex items-center gap-2 rounded-xl bg-background/60 border border-border px-3 py-2 text-xs font-medium text-muted-foreground shadow-2xs"
-                    >
-                      <CloudSun className="h-4 w-4 text-amber-500 animate-pulse" />
-                      {part.state === 'output-available' ? (
-                        <span>
-                          Retrieved live weather data for{' '}
-                          <strong className="text-foreground">{input?.city}</strong>
-                        </span>
-                      ) : part.state === 'output-error' ? (
-                        <span className="text-destructive">
-                          Weather lookup failed: {part.errorText}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5">
-                          <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                          Fetching OpenWeatherMap data for{' '}
-                          <strong className="text-foreground">{input?.city}</strong>...
-                        </span>
-                      )}
-                    </div>
+                      input={part.input as GetWeatherInput | undefined}
+                      output={
+                        part.state === 'output-available'
+                          ? (part.output as GetWeatherOutput)
+                          : null
+                      }
+                      state={part.state}
+                      errorText={part.errorText}
+                    />
                   );
                 }
 
