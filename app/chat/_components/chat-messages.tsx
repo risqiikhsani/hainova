@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from './markdown-renderer';
 import { PlaceDetailModal } from './place-detail-modal';
+import { TavilySearchCard, TavilySearchInput, TavilySearchOutput } from './tavily-search-card';
+import { TavilyExtractCard, TavilyExtractInput, TavilyExtractOutput } from './tavily-extract-card';
 
 const PRICE_LABELS: Record<string, string> = {
   PRICE_LEVEL_FREE: 'Free',
@@ -242,6 +244,40 @@ export function ChatMessages({ messages, isLoading }: ChatMessagesProps) {
                         </span>
                       )}
                     </div>
+                  );
+                }
+
+                // --- tavilySearch tool ---
+                if (part.type === 'tool-tavilySearch') {
+                  return (
+                    <TavilySearchCard
+                      key={part.toolCallId}
+                      input={part.input as TavilySearchInput | undefined}
+                      output={
+                        part.state === 'output-available'
+                          ? (part.output as TavilySearchOutput)
+                          : null
+                      }
+                      state={part.state}
+                      errorText={part.errorText}
+                    />
+                  );
+                }
+
+                // --- tavilyExtract tool ---
+                if (part.type === 'tool-tavilyExtract') {
+                  return (
+                    <TavilyExtractCard
+                      key={part.toolCallId}
+                      input={part.input as TavilyExtractInput | undefined}
+                      output={
+                        part.state === 'output-available'
+                          ? (part.output as TavilyExtractOutput)
+                          : null
+                      }
+                      state={part.state}
+                      errorText={part.errorText}
+                    />
                   );
                 }
 

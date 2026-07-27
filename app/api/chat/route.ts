@@ -1,6 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import { createOllama } from 'ollama-ai-provider-v2';
+import { tavily } from '@tavily/core';
 import {
   streamText,
   tool,
@@ -137,14 +138,15 @@ export async function POST(req: Request) {
 
     const systemPrompt = `You are Hainova AI, a helpful, intelligent, and friendly AI assistant.
 
-### TOOL USE GUIDELINES & STRICT GUARDRAILS:
-1. **ONLY call tools when strictly necessary** to answer queries requiring real-time external data (live weather or specific place recommendations).
+### TOOL USE GUIDELINES:
+1. **Call tools when external, real-time, or up-to-date data is needed** (e.g. live weather, place recommendations, news, sports results/events, recent developments, or web facts).
 2. **DO NOT call any tools** for:
    - Greetings, casual chat, or follow-ups (e.g. "hi", "hello", "how are you", "who are you").
-   - General knowledge, math, coding, explanations, history, or science questions.
-   - Questions where the user has already provided all necessary information in their text.
+   - Simple math, basic logic, or questions where all necessary information is already provided in the prompt.
 
 ### WHEN TO USE TOOLS:
+- Call **tavilySearch** whenever the user asks about live events, current news, sports results or tournaments (e.g., FIFA, World Cup, Olympics), recent facts, real-time web information, or any question where current/up-to-date web data is helpful.
+- Call **tavilyExtract** when the user provides specific web page URLs (e.g., "https://...") or asks to read, scrape, extract, or summarize a specific webpage URL.
 - Call **getWeather** ONLY when the user explicitly asks for current weather, forecast, temperature, or climate conditions of a specific city or region.
 - Call **searchPlaces** ONLY when the user asks to find, locate, recommend, or search for real-world places, hotels, restaurants, cafes, attractions, or spots.
 
@@ -333,6 +335,131 @@ ${locationPromptContext}${
             } catch (err: any) {
               console.error('Error fetching OpenWeatherMap data:', err);
               return { error: 'Failed to fetch weather data from OpenWeatherMap API.' };
+            }
+          },
+        }),
+        tavilySearch: tool({
+          description:
+            'Search the web for real-time information, news, current events, technical documentation, or live web data using Tavily Search API.',
+          inputSchema: z.object({
+            query: z.string().describe('The web search query string'),
+            searchDepth: z
+              .enum(['basic', 'advanced'])
+              .optional()
+              .default('basic')
+              .describe('Search depth: basic is faster, advanced is deeper and more thorough'),
+            topic: z
+              .enum(['general', 'news', 'finance'])
+              .optional()
+              .default('general')
+              .describe('Topic category to narrow down search results'),
+            maxResults: z
+              .number()
+              .optional()
+              .default(5)
+              .describe('Maximum number of search results to return (1-10)'),
+            includeImages: z
+              .boolean()
+              .optional()
+              .default(true)
+              .describe('Whether to include image search results'),
+          }),
+          execute: async ({ query, searchDepth, topic, maxResults, includeImages }) => {
+            const tavilyApiKey = process.env.TAVILY_API_KEY;
+
+            if (!tavilyApiKey) {
+              return {
+                error:
+                  'TAVILY_API_KEY is not configured in environment variables. Please add TAVILY_API_KEY to your .env.local file to enable web search.',
+              };
+            }
+
+            try {
+              const tvly = tavily({ apiKey: tavilyApiKey });
+              const response = await tvly.search(query, {
+                searchDepth,
+                topic,
+                maxResults,
+                includeImages,
+                includeFavicon: true,
+              });
+
+              return {
+                query: response.query || query,
+                answer: response.answer || null,
+                responseTime: response.responseTime,
+                results: (response.results || []).map((r: any) => ({
+                  title: r.title || 'Untitled',
+                  url: r.url,
+                  content: r.content || '',
+                  score: r.score,
+                  publishedDate: r.publishedDate || null,
+                  favicon: r.favicon || null,
+                })),
+                images: (response.images || []).map((img: any) =>
+                  typeof img === 'string' ? { url: img } : img
+                ),
+              };
+            } catch (err: any) {
+              console.error('[tavilySearch] Tavily API error:', err);
+              return {
+                error:
+                  err?.message || 'Failed to perform web search using Tavily API.',
+              };
+            }
+          },
+        }),
+        tavilyExtract: tool({
+          description:
+            'Extract clean main web content, markdown, titles, and images from specific web page URLs using Tavily Extract API.',
+          inputSchema: z.object({
+            urls: z
+              .array(z.string().url())
+              .describe('List of web page URLs to extract text and content from'),
+            extractDepth: z
+              .enum(['basic', 'advanced'])
+              .optional()
+              .default('basic')
+              .describe('Extraction depth: basic or advanced'),
+          }),
+          execute: async ({ urls, extractDepth }) => {
+            const tavilyApiKey = process.env.TAVILY_API_KEY;
+
+            if (!tavilyApiKey) {
+              return {
+                error:
+                  'TAVILY_API_KEY is not configured in environment variables. Please add TAVILY_API_KEY to your .env.local file to enable URL content extraction.',
+              };
+            }
+
+            try {
+              const tvly = tavily({ apiKey: tavilyApiKey });
+              const response = await tvly.extract(urls, {
+                extractDepth,
+                format: 'markdown',
+                includeFavicon: true,
+              });
+
+              return {
+                responseTime: response.responseTime,
+                results: (response.results || []).map((r: any) => ({
+                  url: r.url,
+                  title: r.title || 'Extracted Web Page',
+                  rawContent: r.rawContent || '',
+                  favicon: r.favicon || null,
+                  images: r.images || [],
+                })),
+                failedResults: (response.failedResults || []).map((f: any) => ({
+                  url: f.url,
+                  error: f.error || 'Failed to extract content from URL',
+                })),
+              };
+            } catch (err: any) {
+              console.error('[tavilyExtract] Tavily API error:', err);
+              return {
+                error:
+                  err?.message || 'Failed to extract content from URLs using Tavily API.',
+              };
             }
           },
         }),

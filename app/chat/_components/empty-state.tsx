@@ -1,48 +1,50 @@
-'use client';
+"use client"
 
-import { Sparkles, Code2, Mail, CloudSun, MapPin, HelpCircle } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import {
+  Sparkles,
+  CloudSun,
+  MapPin,
+  Globe,
+  FileText,
+} from "lucide-react"
+import { Card } from "@/components/ui/card"
 
 interface EmptyStateProps {
-  onSelectPrompt: (prompt: string) => void;
+  onSelectPrompt: (prompt: string) => void
 }
 
 const SUGGESTED_PROMPTS = [
   {
     icon: MapPin,
-    title: 'Find Hotels & Places',
-    subtitle: 'Search spots near you or Tokyo',
-    prompt: 'Show me top-rated hotels and ramen spots near Tokyo station.',
+    title: "Show me top-rated hotels and ramen spots near Tokyo station.",
+    subtitle: "Find places somewhere or nearby.",
+    prompt: "Show me top-rated hotels and ramen spots near Tokyo station.",
   },
   {
     icon: CloudSun,
-    title: 'Check Live Weather',
-    subtitle: 'Powered by OpenWeatherMap API',
+    title: "What's the weather in Tokyo right now?",
+    subtitle: "Get live weather information for any location.",
     prompt: "What's the weather in Tokyo right now?",
   },
   {
-    icon: Code2,
-    title: 'Explain React Server Components',
-    subtitle: 'Understand data fetching & performance',
-    prompt: 'Can you explain React Server Components and how they differ from Client Components in Next.js 16?',
+    icon: Globe,
+    title: "What is the winner of FIFA World Cup 2026?",
+    subtitle: "Search for information on the web.",
+    prompt: "What is the winner of FIFA World Cup 2026?",
   },
   {
-    icon: Mail,
-    title: 'Draft a Professional Email',
-    subtitle: 'Communication & tone helper',
-    prompt: 'Help me draft a professional email to request project feedback from a client.',
+    icon: FileText,
+    title:
+      "Extract and summarize content from https://en.wikipedia.org/wiki/Cat_food",
+    subtitle: "Extract and summarize content from website.",
+    prompt:
+      "Extract and summarize content from https://en.wikipedia.org/wiki/Cat_food",
   },
-  {
-    icon: HelpCircle,
-    title: 'Code Debugging & Refactoring',
-    subtitle: 'Clean code & best practices',
-    prompt: 'What are the best practices for structuring custom React hooks and managing side effects clean?',
-  },
-];
+]
 
 export function EmptyState({ onSelectPrompt }: EmptyStateProps) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
+    <div className="flex flex-1 animate-in flex-col items-center justify-center p-6 text-center duration-500 fade-in">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-8 ring-primary/5">
         <Sparkles className="h-8 w-8 animate-pulse" />
       </div>
@@ -51,12 +53,13 @@ export function EmptyState({ onSelectPrompt }: EmptyStateProps) {
         How can I help you today?
       </h2>
       <p className="mb-8 max-w-md text-sm text-muted-foreground">
-        Ask a question, check live weather, draft content, or get help with your code.
+        Ask a question, check live weather, draft content, or get help with your
+        code.
       </p>
 
       <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
         {SUGGESTED_PROMPTS.map((item) => {
-          const Icon = item.icon;
+          const Icon = item.icon
           return (
             <Card
               key={item.title}
@@ -66,16 +69,16 @@ export function EmptyState({ onSelectPrompt }: EmptyStateProps) {
               <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                 <Icon className="h-4 w-4" />
               </div>
-              <h3 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+              <h3 className="text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
                 {item.title}
               </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {item.subtitle}
               </p>
             </Card>
-          );
+          )
         })}
       </div>
     </div>
-  );
+  )
 }
